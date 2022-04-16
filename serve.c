@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <ctype.h>
 #include "xhttp.h"
@@ -125,6 +126,8 @@ int account_exists(isolate_t *isol, const char *usern, const char *passw)
 
     _Bool exists = !!strcmp(fetched, "0");
 
+    debugf("Account [%s] %s\n", usern, exists ? "exists" : "doesn't exist");
+
     sqlite3_finalize(stmt);
     return exists;
 
@@ -144,13 +147,13 @@ _Bool create_account(isolate_t *isol, const char *usern, const char *passw)
     int rc = sqlite3_prepare_v2(isol->database, text, -1, &stmt, NULL);
     if(rc != SQLITE_OK) goto done;
 
-    rc = sqlite3_bind_text(stmt, 0, usern, -1, NULL);
+    rc = sqlite3_bind_text(stmt, 1, usern, -1, NULL);
     if(rc != SQLITE_OK) goto done;
 
-    rc = sqlite3_bind_text(stmt, 1, passw, -1, NULL);
+    rc = sqlite3_bind_text(stmt, 2, passw, -1, NULL);
     if(rc != SQLITE_OK) goto done;
 
-    if(sqlite3_step(stmt) != SQLITE_OK)
+    if(sqlite3_step(stmt) != SQLITE_DONE)
         goto done;
 
     created = 1;
@@ -309,8 +312,6 @@ static void callback(xh_request *req, xh_response *res, void *userp)
 
         xh_params_free(params);
 
-        res->status = 200;
-
         if(sess_id < 0)
         {
             /* Failed to create session. */
@@ -321,6 +322,7 @@ static void callback(xh_request *req, xh_response *res, void *userp)
             return;
         }
 
+        res->status = 300;
         xh_header_add(res, "Set-Cookie", "sess_id=%d; HttpOnly", sess_id);
         xh_header_add(res, "Location", "/home");
         return;
@@ -542,6 +544,8 @@ static void callback(xh_request *req, xh_response *res, void *userp)
     }
 
     res->status = 404;
+    res->body = "This resource doesn't exist :/";
+    res->body_len = strlen(res->body);
 }
 
 static _Thread_local xh_handle handle;
@@ -616,7 +620,80 @@ void serve(const char *addr, unsigned short port, const char *file)
     fprintf(stderr, "EXITING\n");
 }
 
-int main()
+static void usage(const char *exec)
 {
-    serve(NULL, 8080, NULL);
+    fprintf(stderr, "Usage: %s [ --file <database-file-path> ] [ --port <n> ] [ --addr x.x.x.x ]\n", exec);
+}
+
+int main(int argc, char **argv)
+{
+    const char *addr = NULL;
+    const char *file = NULL;
+    const char *port_as_text = NULL;
+
+    for(int i = 1; i < argc; i += 1)
+    {
+        if(!strcmp(argv[i], "--addr"))
+        {
+            i += 1;
+            if(i == argc)
+            {
+                fprintf(stderr, "ERROR: argument --addr expects "
+                                "an IPv4 address after it\n");
+                usage(argv[0]);
+                return 1;
+            }
+            addr = argv[i];
+        }
+        else if(!strcmp(argv[i], "--port"))
+        {
+            i += 1;
+            if(i == argc)
+            {
+                fprintf(stderr, "ERROR: argument --port expects an "
+                                "integer between 0 and 65535 after it\n");
+                usage(argv[0]);
+                return 1;
+            }
+            port_as_text = argv[i];
+        }
+        else if(!strcmp(argv[i], "--file"))
+        {
+            i += 1;
+            if(i == argc)
+            {
+                fprintf(stderr, "ERROR: argument --file expects a "
+                                "file path after it\n");
+                usage(argv[0]);
+                return 1;
+            }
+            file = argv[i];
+        }
+        else
+        {
+            fprintf(stderr, "ERROR: invalid argument %s\n", argv[i]);
+            usage(argv[0]);
+            return 1;
+        }
+    }
+
+    unsigned short port;
+    if(port_as_text == NULL)
+    {
+        port = 8080;
+    }
+    else
+    {
+        errno = 0;
+        long long int temp = strtoll(port_as_text, NULL, 10);
+        if(errno != 0 || temp < 0 || temp > 65535)
+        {
+            fprintf(stderr, "ERROR: invalid port\n");
+            usage(argv[0]);
+            return 1;
+        }
+        port = temp;
+    }
+
+    serve(addr, port, file);
 }
