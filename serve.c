@@ -230,10 +230,17 @@ static void callback(xh_request *req, xh_response *res, void *userp)
         }
     }
 
+    debugf("Logged? %s\n", usern == NULL ? "No" : "Yes");
+
     if(!strcmp(req->URL, "/api/login"))
     {
         if(req->method_id != XH_POST)
-            { res->status = 405; return; }
+        { 
+            res->status = 405; 
+            res->body = "Invalid method";
+            res->body_len = strlen(res->body);
+            return; 
+        }
 
         if(usern != NULL)
         {
@@ -322,8 +329,8 @@ static void callback(xh_request *req, xh_response *res, void *userp)
             return;
         }
 
-        res->status = 300;
-        xh_header_add(res, "Set-Cookie", "sess_id=%d; HttpOnly", sess_id);
+        res->status = 303;
+        xh_header_add(res, "Set-Cookie", "sess_id=%d; HttpOnly; SameSite=Lax; Path=/", sess_id);
         xh_header_add(res, "Location", "/home");
         return;
     }
@@ -331,7 +338,12 @@ static void callback(xh_request *req, xh_response *res, void *userp)
     if(!strcmp(req->URL, "/api/signup"))
     {
         if(req->method_id != XH_POST)
-            { res->status = 405; return; }
+        { 
+            res->status = 405; 
+            res->body = "Invalid method";
+            res->body_len = strlen(res->body);
+            return; 
+        }
 
         if(usern != NULL)
         {
@@ -365,13 +377,13 @@ static void callback(xh_request *req, xh_response *res, void *userp)
         /* Get [usern], [passw] and [passw2] parameters */
 
         int usern_len, passw_len, passw2_len;
-        const char *usern  = xh_params_get(params, "usern",  &usern_len);
-        const char *passw  = xh_params_get(params, "passw",  &passw_len);
-        const char *passw2 = xh_params_get(params, "passw2", &passw2_len);
+        const char *param_usern  = xh_params_get(params, "usern",  &usern_len);
+        const char *param_passw  = xh_params_get(params, "passw",  &passw_len);
+        const char *param_passw2 = xh_params_get(params, "passw2", &passw2_len);
 
-        if(usern == NULL || usern_len == 0 ||
-            passw == NULL || passw_len == 0 ||
-            passw2 == NULL || passw2_len == 0)
+        if(param_usern == NULL || usern_len == 0 ||
+            param_passw == NULL || passw_len == 0 ||
+            param_passw2 == NULL || passw2_len == 0)
         {
             res->status = 400;
             res->body = "Parameters missing or empty";
@@ -404,7 +416,7 @@ static void callback(xh_request *req, xh_response *res, void *userp)
             return;
         }
 
-        if(passw_len != passw2_len || strcmp(passw, passw2))
+        if(passw_len != passw2_len || strcmp(param_passw, param_passw2))
         {
             res->status = 400;
             res->body = "Password confirmation failed";
@@ -415,9 +427,9 @@ static void callback(xh_request *req, xh_response *res, void *userp)
             return;
         }
 
-        if(!create_account(isol, usern, passw))
+        if(!create_account(isol, param_usern, param_passw))
         {
-            if(account_exists(isol, usern, NULL) == 1)
+            if(account_exists(isol, param_usern, NULL) == 1)
             {
                 /* Username is already in use. */
                 res->status = 400;
@@ -433,18 +445,18 @@ static void callback(xh_request *req, xh_response *res, void *userp)
             return;
         }
 
-        int sess_id = create_session(isol, usern);
+        int sess_id = create_session(isol, param_usern);
 
         xh_params_free(params);
 
-        res->status = 200;
+        res->status = 303;
 
         if(sess_id < 0)
             /* Failed to create session. */
             xh_header_add(res, "Location", "/login");
         else
         {
-            xh_header_add(res, "Set-Cookie", "sess_id=%d; HttpOnly", sess_id);
+            xh_header_add(res, "Set-Cookie", "sess_id=%d; HttpOnly; SameSite=Lax; Path=/", sess_id);
             xh_header_add(res, "Location", "/home");
         }
         return;
@@ -453,29 +465,35 @@ static void callback(xh_request *req, xh_response *res, void *userp)
     if(!strcmp(req->URL, "/login"))
     {
         if(req->method_id != XH_GET)
-            { res->status = 405; return; }
+        { 
+            res->status = 405; 
+            res->body = "Invalid method";
+            res->body_len = strlen(res->body);
+            return; 
+        }
 
         if(usern != NULL)
         {
             /* Already logged in. */
-            res->status = 300;
+            res->status = 303;
             xh_header_add(res, "Location", "/home");
             return;
         }
 
         static const char body[] =
-        "<html>"
-        "    <head>"
-        "        <title>Login</title>"
-        "    </head>"
-        "    <body>"
-        "        <form action=\"/api/login\" method=\"POST\">"
-        "            <input type=\"text\" name=\"usern\" placeholder=\"[Username]\" />"
-        "            <input type=\"password\" name=\"passw\" placeholder=\"[Password]\" />"
-        "            <input type=\"submit\" value=\"Log-In\" />"
-        "        </form>"
-        "    </body>"
-        "</html>";
+        "<html>\n"
+        "    <head>\n"
+        "        <title>Login</title>\n"
+        "    </head>\n"
+        "    <body>\n"
+        "        <form action=\"/api/login\" method=\"POST\">\n"
+        "            <input type=\"text\" name=\"usern\" placeholder=\"[Username]\" />\n"
+        "            <input type=\"password\" name=\"passw\" placeholder=\"[Password]\" />\n"
+        "            <input type=\"submit\" value=\"Log-In\" />\n"
+        "        </form>\n"
+        "    </body>\n"
+        "</html>\n";
+        res->status = 200;
         res->body = body;
         res->body_len = sizeof(body);
         xh_header_add(res, "Content-Type", "text/html");
@@ -485,30 +503,36 @@ static void callback(xh_request *req, xh_response *res, void *userp)
     if(!strcmp(req->URL, "/signup"))
     {
         if(req->method_id != XH_GET)
-            { res->status = 405; return; }
+        { 
+            res->status = 405; 
+            res->body = "Invalid method";
+            res->body_len = strlen(res->body);
+            return; 
+        }
 
         if(usern != NULL)
         {
             /* Already logged in. */
-            res->status = 300;
+            res->status = 303;
             xh_header_add(res, "Location", "/home");
             return;
         }
 
         static const char body[] =
-        "<html>"
-        "    <head>"
-        "        <title>Signup</title>"
-        "    </head>"
-        "    <body>"
-        "        <form action=\"/api/signup\" method=\"POST\">"
-        "            <input type=\"text\" name=\"usern\" placeholder=\"[Username]\" />"
-        "            <input type=\"password\" name=\"passw\"  placeholder=\"[Password]\" />"
-        "            <input type=\"password\" name=\"passw2\" placeholder=\"[Confirm password]\" />"
-        "            <input type=\"submit\" value=\"Sign-Up\" />"
-        "        </form>"
-        "    </body>"
-        "</html>";
+        "<html>\n"
+        "    <head>\n"
+        "        <title>Signup</title>\n"
+        "    </head>\n"
+        "    <body>\n"
+        "        <form action=\"/api/signup\" method=\"POST\">\n"
+        "            <input type=\"text\" name=\"usern\" placeholder=\"[Username]\" />\n"
+        "            <input type=\"password\" name=\"passw\"  placeholder=\"[Password]\" />\n"
+        "            <input type=\"password\" name=\"passw2\" placeholder=\"[Confirm password]\" />\n"
+        "            <input type=\"submit\" value=\"Sign-Up\" />\n"
+        "        </form>\n"
+        "    </body>\n"
+        "</html>\n";
+        res->status = 200;
         res->body = body;
         res->body_len = sizeof(body);
         xh_header_add(res, "Content-Type", "text/html");
@@ -518,25 +542,31 @@ static void callback(xh_request *req, xh_response *res, void *userp)
     if(!strcmp(req->URL, "/home"))
     {
         if(req->method_id != XH_GET)
-            { res->status = 405; return; }
+        { 
+            res->status = 405; 
+            res->body = "Invalid method";
+            res->body_len = strlen(res->body);
+            return; 
+        }
 
         if(usern == NULL)
         {
             /* Not logged in. */
-            res->status = 300;
+            res->status = 303;
             xh_header_add(res, "Location", "/login");
             return;
         }
 
         static const char body[] =
-        "<html>"
-        "    <head>"
-        "        <title>Home</title>"
-        "    </head>"
-        "    <body>"
-        "        <a>Hello!</a>"
-        "    </body>"
-        "</html>";
+        "<html>\n"
+        "    <head>\n"
+        "        <title>Home</title>\n"
+        "    </head>\n"
+        "    <body>\n"
+        "        <a>Hello!</a>\n"
+        "    </body>\n"
+        "</html>\n";
+        res->status = 200;
         res->body = body;
         res->body_len = sizeof(body);
         xh_header_add(res, "Content-Type", "text/html");
@@ -625,7 +655,12 @@ static void usage(FILE *fp, const char *exec)
     fprintf(fp, "Usage: %s [ --file <database-file-path> ] [ --port <n> ] [ --addr x.x.x.x ]\n", exec);
 }
 
-int main(int argc, char **argv)
+struct args_t {
+    const char *addr, *file;
+    unsigned short port;
+};
+
+static struct args_t parse_args_or_exit(int argc, char **argv)
 {
     const char *addr = NULL;
     const char *file = NULL;
@@ -641,7 +676,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "ERROR: argument --addr expects "
                                 "an IPv4 address after it\n");
                 usage(stderr, argv[0]);
-                return 1;
+                exit(1);
             }
             addr = argv[i];
         }
@@ -653,7 +688,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "ERROR: argument --port expects an "
                                 "integer between 0 and 65535 after it\n");
                 usage(stderr, argv[0]);
-                return 1;
+                exit(1);
             }
             port_as_text = argv[i];
         }
@@ -665,20 +700,20 @@ int main(int argc, char **argv)
                 fprintf(stderr, "ERROR: argument --file expects a "
                                 "file path after it\n");
                 usage(stderr, argv[0]);
-                return 1;
+                exit(1);
             }
             file = argv[i];
         }
         else if(!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
         {
             usage(stdout, argv[0]);
-            return 0;
+            exit(0);
         }
         else
         {
             fprintf(stderr, "ERROR: invalid argument %s\n", argv[i]);
             usage(stderr, argv[0]);
-            return 1;
+            exit(1);
         }
     }
 
@@ -695,10 +730,16 @@ int main(int argc, char **argv)
         {
             fprintf(stderr, "ERROR: invalid port\n");
             usage(stderr, argv[0]);
-            return 1;
+            exit(1);
         }
         port = temp;
     }
+    return (struct args_t) { .file = file, .addr = addr, .port = port };   
+}
 
-    serve(addr, port, file);
+int main(int argc, char **argv)
+{
+    struct args_t args = parse_args_or_exit(argc, argv);
+    serve(args.addr, args.port, args.file);
+    return 0;
 }
