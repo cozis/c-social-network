@@ -1,0 +1,4 @@
+sqlite3.*
+vgcore.*
+file.db
+serve
