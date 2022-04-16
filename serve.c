@@ -620,9 +620,9 @@ void serve(const char *addr, unsigned short port, const char *file)
     fprintf(stderr, "EXITING\n");
 }
 
-static void usage(const char *exec)
+static void usage(FILE *fp, const char *exec)
 {
-    fprintf(stderr, "Usage: %s [ --file <database-file-path> ] [ --port <n> ] [ --addr x.x.x.x ]\n", exec);
+    fprintf(fp, "Usage: %s [ --file <database-file-path> ] [ --port <n> ] [ --addr x.x.x.x ]\n", exec);
 }
 
 int main(int argc, char **argv)
@@ -640,7 +640,7 @@ int main(int argc, char **argv)
             {
                 fprintf(stderr, "ERROR: argument --addr expects "
                                 "an IPv4 address after it\n");
-                usage(argv[0]);
+                usage(stderr, argv[0]);
                 return 1;
             }
             addr = argv[i];
@@ -652,7 +652,7 @@ int main(int argc, char **argv)
             {
                 fprintf(stderr, "ERROR: argument --port expects an "
                                 "integer between 0 and 65535 after it\n");
-                usage(argv[0]);
+                usage(stderr, argv[0]);
                 return 1;
             }
             port_as_text = argv[i];
@@ -664,15 +664,20 @@ int main(int argc, char **argv)
             {
                 fprintf(stderr, "ERROR: argument --file expects a "
                                 "file path after it\n");
-                usage(argv[0]);
+                usage(stderr, argv[0]);
                 return 1;
             }
             file = argv[i];
         }
+        else if(!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
+        {
+            usage(stdout, argv[0]);
+            return 0;
+        }
         else
         {
             fprintf(stderr, "ERROR: invalid argument %s\n", argv[i]);
-            usage(argv[0]);
+            usage(stderr, argv[0]);
             return 1;
         }
     }
@@ -689,7 +694,7 @@ int main(int argc, char **argv)
         if(errno != 0 || temp < 0 || temp > 65535)
         {
             fprintf(stderr, "ERROR: invalid port\n");
-            usage(argv[0]);
+            usage(stderr, argv[0]);
             return 1;
         }
         port = temp;
